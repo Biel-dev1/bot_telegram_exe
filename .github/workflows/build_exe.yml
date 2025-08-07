@@ -25,10 +25,10 @@ jobs:
 
     - name: Build executable
       run: |
-        pyinstaller --onefile *.py
+        pyinstaller --onefile painelcit.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: executable
-        path: dist/*.exe
+        path: dist/painelcit.exe
