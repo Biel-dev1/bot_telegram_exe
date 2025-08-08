@@ -1,47 +1,31 @@
-name: Build PainelCity EXE
+name: Compilar EXE PainelCity
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:  # botão manual pra disparar se quiser
 
 jobs:
   build:
     runs-on: windows-latest
 
-    env:  
-      VCPKG_ROOT: C:\vcpkg  
-      VCPKG_DEFAULT_TRIPLET: x64-windows  
+    env:
+      VCPKG_ROOT: C:\vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows
 
-    steps:  
-      - name: Checkout do código  
-        uses: actions/checkout@v3  
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
 
-      - name: Instalar vcpkg se necessário  
-        shell: cmd
-        run: |  
-          if not exist %VCPKG_ROOT% (
-            git clone https://github.com/microsoft/vcpkg %VCPKG_ROOT%
-            %VCPKG_ROOT%\bootstrap-vcpkg.bat
-          )  
+      - name: Restaurar cache do vcpkg
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}\installed
+            ${{ env.VCPKG_ROOT }}\packages
+          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
-      - name: Cache dos pacotes vcpkg  
-        uses: actions/cache@v3  
-        with:  
-          path: |  
-            ${{ env.VCPKG_ROOT }}\installed  
-            ${{ env.VCPKG_ROOT }}\packages  
-          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}  
-          restore-keys: |  
-            ${{ runner.os }}-vcpkg-  
-
-      - name: Instalar dependências via vcpkg  
-        shell: cmd
-        run: |  
-          %VCPKG_ROOT%\vcpkg.exe install openssl cpp-httplib nlohmann-json --triplet %VCPKG_DEFAULT_TRIPLET%  
-
-      - name: Compilar PainelCity.exe com MSVC  
+      - name: Compilar PainelCity.exe com MSVC e dependências via vcpkg
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
@@ -53,10 +37,10 @@ jobs:
             /link ^
             /LIBPATH:"%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib" ^
             libssl.lib libcrypto.lib crypt32.lib ^
-            /OUT:PainelCity.exe  
+            /OUT:PainelCity.exe
 
-      - name: Upload do executável  
-        uses: actions/upload-artifact@v4  
-        with:  
-          name: painelcity-exe  
+      - name: Upload do executável
+        uses: actions/upload-artifact@v4
+        with:
+          name: painelcity-exe
           path: PainelCity.exe
