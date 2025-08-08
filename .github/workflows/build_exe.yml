@@ -9,19 +9,19 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout código
+      - name: Checkout do código
         uses: actions/checkout@v3
 
-      - name: Instalar MSBuild (env VS)
+      - name: Instalar ambiente MSBuild do Visual Studio
         uses: microsoft/setup-msbuild@v1.3.1
 
-      - name: Compilar PainelCity.exe com cl.exe (VS Enterprise)
+      - name: Compilar PainelCity.exe com MSVC
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
-          cl painelcity.cpp /EHsc /std:c++17 /Fe:PainelCity.exe
+          cl painelcity.cpp /EHsc /std:c++17 /Iinclude /Fe:PainelCity.exe
 
-      - name: Upload do executável
+      - name: Fazer upload do executável
         uses: actions/upload-artifact@v4
         with:
           name: painelcity-exe
