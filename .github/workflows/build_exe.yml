@@ -1,58 +1,27 @@
-name: Build PainelCity EXE (MSVC)
+name: Build PainelCity EXE
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
 
 jobs:
   build:
     runs-on: windows-latest
 
-    env:
-      VCPKG_ROOT: C:\vcpkg
-      VCPKG_DEFAULT_TRIPLET: x64-windows
-
     steps:
       - name: Checkout código
         uses: actions/checkout@v3
 
-      - name: Instalar vcpkg (se ainda não tiver)
-        run: |
-          if (!(Test-Path "$env:VCPKG_ROOT")) {
-            git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
-            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat"
-          }
+      - name: Instalar MSBuild
+        uses: microsoft/setup-msbuild@v1.3.1
 
-      - name: Cache dos pacotes vcpkg
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.VCPKG_ROOT }}\installed
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-
-
-      - name: Instalar dependências (OpenSSL, JSON, httplib)
-        run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install openssl nlohmann-json cpp-httplib --triplet $env:VCPKG_DEFAULT_TRIPLET
-
-      - name: Compilar PainelCity.exe com MSVC
+      - name: Compilar PainelCity.exe com cl.exe
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+          call "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
+          cl painelcity.cpp /EHsc /std:c++17 /Fe:PainelCity.exe
 
-          set INCLUDE=%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\include;%INCLUDE%
-          set LIB=%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib;%LIB%
-
-          cl.exe painelcity.cpp /EHsc /std:c++17 ^
-            /I"%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\include" ^
-            /link ^
-            /LIBPATH:"%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib" ^
-            crypt32.lib libcrypto.lib libssl.lib ^
-            /OUT:PainelCity.exe
-
-      - name: Upload do executável compilado
+      - name: Upload do executável
         uses: actions/upload-artifact@v4
         with:
           name: painelcity-exe
