@@ -17,7 +17,7 @@
 #include <ctime>
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
-#include <cpp-httplib/httplib.h>
+#include <httplib.h>
 
 #include <openssl/evp.h>
 #include <openssl/aes.h>
