@@ -41,8 +41,8 @@ jobs:
             crypt32.lib libcrypto.lib libssl.lib ^
             /OUT:PainelCity.exe
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload built EXE
+        uses: actions/upload-artifact@v4
         with:
           name: painelcity-exe
           path: PainelCity.exe
