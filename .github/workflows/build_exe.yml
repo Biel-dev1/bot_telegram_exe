@@ -27,15 +27,19 @@ jobs:
     - name: Detect main script
       id: detect_script
       run: |
-        FILE=$(ls *.py | head -n 1)
-        echo "main_file=$FILE" >> $GITHUB_ENV
-        NAME=$(basename $FILE .py)
-        echo "exe_name=$NAME.exe" >> $GITHUB_ENV
+        $file = Get-ChildItem *.py | Select-Object -First 1
+        echo "main_file=$($file.Name)" >> $env:GITHUB_ENV
+        $name = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+        echo "exe_name=$name.exe" >> $env:GITHUB_ENV
 
     - name: Build EXE
       run: |
-        pyinstaller --onefile --icon icone.ico "$env:main_file"
-        Rename-Item "dist/$env:main_file" "dist/$env:exe_name"
+        pyinstaller --onefile --icon=icone.ico $env:main_file
+
+    - name: Rename EXE
+      run: |
+        $name = "$env:exe_name"
+        Rename-Item -Path "dist/*.exe" -NewName $name
 
     - name: Upload artifact
       uses: actions/upload-artifact@v3
