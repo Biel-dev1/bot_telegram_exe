@@ -1,3 +1,8 @@
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <windows.h>
+#include <ws2tcpip.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -5,16 +10,19 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
-#include <windows.h>
 #include <wincrypt.h>
 #include <shlobj.h>
 #include <cstdlib>
 #include <iomanip>
 #include <ctime>
+
+#define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <cpp-httplib/httplib.h>
+
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <openssl/err.h>
+
 #include "include/json.hpp"
 
 using json = nlohmann::json;
