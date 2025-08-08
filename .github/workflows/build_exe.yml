@@ -1,62 +1,47 @@
-name: Build PainelCity EXE
+name: Build C++ Project
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: windows-latest
 
-    env:  
-      VCPKG_ROOT: C:\vcpkg  
-      VCPKG_DEFAULT_TRIPLET: x64-windows  
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows
 
-    steps:  
-      - name: Checkout do código  
-        uses: actions/checkout@v3  
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Instalar vcpkg se necessário  
-        shell: cmd
-        run: |  
-          if not exist %VCPKG_ROOT% (
-            git clone https://github.com/microsoft/vcpkg %VCPKG_ROOT%
-            %VCPKG_ROOT%\bootstrap-vcpkg.bat
-          )  
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}\installed
+            ${{ env.VCPKG_ROOT }}\downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
-      - name: Cache dos pacotes vcpkg  
-        uses: actions/cache@v3  
-        with:  
-          path: |  
-            ${{ env.VCPKG_ROOT }}\installed  
-            ${{ env.VCPKG_ROOT }}\packages  
-          key: ${{ runner.os }}-vcpkg-${{ env.VCPKG_DEFAULT_TRIPLET }}  
-          restore-keys: |  
-            ${{ runner.os }}-vcpkg-  
-
-      - name: Instalar dependências via vcpkg  
-        shell: cmd
-        run: |  
-          %VCPKG_ROOT%\vcpkg.exe install openssl cpp-httplib nlohmann-json --triplet %VCPKG_DEFAULT_TRIPLET%  
-
-      - name: Compilar PainelCity.exe com MSVC  
-        shell: cmd
+      - name: Install vcpkg if not exists
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
-          set INCLUDE=%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\include;include;%INCLUDE%
-          set LIB=%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib;%LIB%
-          cl painelcity.cpp /EHsc /std:c++17 ^
-            /I"%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\include" ^
-            /I"include" ^
-            /link ^
-            /LIBPATH:"%VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib" ^
-            libssl.lib libcrypto.lib crypt32.lib ^
-            /OUT:PainelCity.exe  
+          if (-Not (Test-Path "${env:VCPKG_ROOT}")) {
+            git clone https://github.com/microsoft/vcpkg "${env:VCPKG_ROOT}"
+            & "${env:VCPKG_ROOT}\bootstrap-vcpkg.bat"
+          }
 
-      - name: Upload do executável  
-        uses: actions/upload-artifact@v4  
-        with:  
-          name: painelcity-exe  
-          path: PainelCity.exe
+      - name: Install dependencies with vcpkg
+        run: |
+          & "${env:VCPKG_ROOT}\vcpkg.exe" install
+
+      - name: Configure with CMake
+        run: |
+          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+
+      - name: Build project
+        run: cmake --build build --config Release
