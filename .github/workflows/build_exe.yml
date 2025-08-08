@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Windows exe
 
 on:
   workflow_dispatch:
