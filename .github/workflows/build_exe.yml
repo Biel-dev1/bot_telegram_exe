@@ -1,48 +1,32 @@
-name: Build PainelCity EXE
+name: Build PainelCity EXE (cross-compile)
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 jobs:
   build-windows:
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        vcpkg-triplet: [ x64-windows ]
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Install vcpkg
+      - name: Instalar cross-compiler e libs Windows
         run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-          pushd C:\vcpkg
-          .\bootstrap-vcpkg.bat
-          popd
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 \
+            mingw-w64-x86-64-dev \
+            mingw-w64-x86-64-openssl-dev
 
-      - name: Install dependencies via vcpkg
+      - name: Compilar PainelCity.exe
         run: |
-          C:\vcpkg\vcpkg.exe install openssl nlohmann-json cpp-httplib --triplet ${{ matrix.vcpkg-triplet }}
+          x86_64-w64-mingw-g++ painelcity.cpp \
+            -std=c++17 \
+            -Iinclude \
+            -lssl -lcrypto -lcrypt32 \
+            -o PainelCity.exe
 
-      - name: Compile PainelCity.exe
-        shell: cmd
-        run: |
-          set VC_VCPKG_ROOT=C:\vcpkg
-          set INCLUDE=%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\include;%INCLUDE%
-          set LIB=%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\lib;%LIB%
-          cl.exe painelcity.cpp /EHsc /std:c++17 ^
-            /I"%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\include" ^
-            /link ^
-            /LIBPATH:"%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\lib" ^
-            crypt32.lib libcrypto.lib libssl.lib ^
-            /OUT:PainelCity.exe
-
-      - name: Upload built EXE
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: painelcity-exe
           path: PainelCity.exe
