@@ -11,11 +11,11 @@
 #include <cstdlib>
 #include <iomanip>
 #include <ctime>
-#include <nlohmann/json.hpp>
 #include <cpp-httplib/httplib.h>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <openssl/err.h>
+#include "include/json.hpp"
 
 using json = nlohmann::json;
 
