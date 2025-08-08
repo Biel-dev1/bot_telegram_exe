@@ -1,34 +1,48 @@
-name: Build EXE on Push
+name: Build PainelCity EXE
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        vcpkg-triplet: [ x64-windows ]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Install vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          pushd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+          popd
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      - name: Install dependencies via vcpkg
+        run: |
+          C:\vcpkg\vcpkg.exe install openssl nlohmann-json cpp-httplib --triplet ${{ matrix.vcpkg-triplet }}
 
-    - name: Build EXE with PyInstaller
-      run: pyinstaller --onefile painelcity.py
+      - name: Compile PainelCity.exe
+        shell: cmd
+        run: |
+          set VC_VCPKG_ROOT=C:\vcpkg
+          set INCLUDE=%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\include;%INCLUDE%
+          set LIB=%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\lib;%LIB%
+          cl.exe painelcity.cpp /EHsc /std:c++17 ^
+            /I"%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\include" ^
+            /link ^
+            /LIBPATH:"%VC_VCPKG_ROOT%\installed\${{ matrix.vcpkg-triplet }}\lib" ^
+            crypt32.lib libcrypto.lib libssl.lib ^
+            /OUT:PainelCity.exe
 
-    - name: Upload EXE artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: built-exe
-        path: dist/painelcity.exe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: painelcity-exe
+          path: PainelCity.exe
