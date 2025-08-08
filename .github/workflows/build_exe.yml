@@ -1,32 +1,73 @@
-name: Build PainelCity EXE (cross-compile)
+# .github/workflows/build.yml
+
+name: Build PainelCity EXE
 
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build-windows:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        vcpkg-triplet: [ x64-windows ]
 
     steps:
-      - uses: actions/checkout@v3
+      # 1) Puxa o código
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Instalar cross-compiler e libs Windows
+      # 2) Instala e inicializa o vcpkg, se ainda não existir
+      - name: Install vcpkg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y mingw-w64 \
-            mingw-w64-x86-64-dev \
-            mingw-w64-x86-64-openssl-dev
+          if not exist C:\vcpkg (
+            git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+            pushd C:\vcpkg
+            .\bootstrap-vcpkg.bat
+            popd
+          )
 
-      - name: Compilar PainelCity.exe
+      # 3) Cacheia os pacotes instalados do vcpkg para acelerar builds futuras
+      - name: Cache vcpkg packages
+        uses: actions/cache@v3
+        with:
+          path: C:/vcpkg/installed
+          key: ${{ runner.os }}-vcpkg-${{ matrix.vcpkg-triplet }}-lockfile
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ matrix.vcpkg-triplet }}-
+
+      # 4) Instala dependências via vcpkg
+      - name: Install dependencies via vcpkg
         run: |
-          x86_64-w64-mingw-g++ painelcity.cpp \
-            -std=c++17 \
-            -Iinclude \
-            -lssl -lcrypto -lcrypt32 \
-            -o PainelCity.exe
+          C:\vcpkg\vcpkg.exe install openssl nlohmann-json cpp-httplib --triplet ${{ matrix.vcpkg-triplet }}
 
-      - uses: actions/upload-artifact@v4
+      # 5) Inicializa o ambiente do Visual Studio e compila o PainelCity.exe
+      - name: Compile PainelCity.exe (MSVC)
+        shell: cmd
+        run: |
+          :: Ajusta PATH, INCLUDE e LIB para o cl.exe
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+          :: Define o root do vcpkg
+          set VC_VCPKG_ROOT=C:\vcpkg
+          set INCLUDE=%VC_VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\include;%INCLUDE%
+          set LIB=%VC_VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib;%LIB%
+
+          :: Compila o arquivo principal
+          cl.exe painelcity.cpp /EHsc /std:c++17 ^
+            /I"%VC_VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\include" ^
+            /link ^
+            /LIBPATH:"%VC_VCPKG_ROOT%\installed\%VCPKG_DEFAULT_TRIPLET%\lib" ^
+            crypt32.lib libcrypto.lib libssl.lib ^
+            /OUT:PainelCity.exe
+
+      # 6) Envia o executável como artefato
+      - name: Upload built EXE
+        uses: actions/upload-artifact@v4
         with:
           name: painelcity-exe
           path: PainelCity.exe
+```0
