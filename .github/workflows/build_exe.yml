@@ -1,35 +1,28 @@
-name: Compile painel.cs using dotnet
+name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '8.0.x'  # use a versão mais atual do .NET
-
-      - name: Create temp console project and replace Program.cs
-        run: |
-          dotnet new console -o tempProj --framework net8.0
-          Remove-Item tempProj\Program.cs
-          move painel.cs tempProj\Program.cs
-
-      - name: Build project
-        run: |
-          cd tempProj
-          dotnet publish -c Release -r win-x64 --self-contained false -o publish
-
-      - name: Upload compiled exe
-        uses: actions/upload-artifact@v4
-        with:
-          name: painel-exe
-          path: tempProj/publish/painel.exe
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    - name: Create console project
+      run: dotnet new console -o tempProj -n painel --framework net8.0
+    - name: Remove auto-generated Program.cs
+      run: Remove-Item tempProj/Program.cs
+    - name: Copy painel.cs to project
+      run: Copy-Item painel.cs tempProj/Program.cs
+    - name: Publish project
+      run: dotnet publish tempProj/painel.csproj -c Release -o publish
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: painel-exe
+        path: publish/painel.exe
