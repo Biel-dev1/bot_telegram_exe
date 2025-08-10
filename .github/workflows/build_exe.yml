@@ -16,11 +16,15 @@ jobs:
     - name: Create console project
       run: dotnet new console -o tempProj -n painel --framework net8.0
     - name: Remove auto-generated Program.cs
-      run: Remove-Item tempProj/Program.cs
+      run: Remove-Item tempProj/Program.cs -Force
     - name: Copy painel.cs to project
-      run: Copy-Item painel.cs tempProj/Program.cs
+      run: Copy-Item painel.cs tempProj/painel.cs
+    - name: Rename painel.cs to Program.cs
+      run: Move-Item tempProj/painel.cs tempProj/Program.cs
+    - name: Restore dependencies
+      run: dotnet restore tempProj/painel.csproj
     - name: Publish project
-      run: dotnet publish tempProj/painel.csproj -c Release -o publish
+      run: dotnet publish tempProj/painel.csproj -c Release -o publish --no-restore
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
