@@ -15,12 +15,13 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: '7.0.x'
+          dotnet-version: '8.0.x'  # use a versão mais atual do .NET
 
-      - name: Create temp console project
+      - name: Create temp console project and replace Program.cs
         run: |
-          dotnet new console -o tempProj --framework net7.0
-          move painel.cs tempProj/Program.cs
+          dotnet new console -o tempProj --framework net8.0
+          Remove-Item tempProj\Program.cs
+          move painel.cs tempProj\Program.cs
 
       - name: Build project
         run: |
