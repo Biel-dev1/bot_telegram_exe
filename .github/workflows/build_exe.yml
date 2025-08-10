@@ -1,4 +1,4 @@
-name: Compile painel.cs
+name: Compile painel.cs using dotnet
 
 on:
   push:
@@ -12,14 +12,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Compile painel.cs
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '7.0.x'
+
+      - name: Create temp console project
         run: |
-          dir
-          csc painel.cs
-          dir
+          dotnet new console -o tempProj --framework net7.0
+          move painel.cs tempProj/Program.cs
+
+      - name: Build project
+        run: |
+          cd tempProj
+          dotnet publish -c Release -r win-x64 --self-contained false -o publish
 
       - name: Upload compiled exe
         uses: actions/upload-artifact@v4
         with:
           name: painel-exe
-          path: painel.exe
+          path: tempProj/publish/painel.exe
