@@ -19,7 +19,7 @@ jobs:
           dir
 
       - name: Upload compiled exe
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: painel-exe
           path: painel.exe
