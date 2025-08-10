@@ -1,47 +1,25 @@
-name: Build C++ Project
+name: Compile painel.cs
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 jobs:
   build:
     runs-on: windows-latest
 
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}\vcpkg
-      VCPKG_DEFAULT_TRIPLET: x64-windows
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
+      - name: Compile painel.cs
+        run: |
+          dir
+          csc painel.cs
+          dir
+
+      - name: Upload compiled exe
+        uses: actions/upload-artifact@v3
         with:
-          path: |
-            ${{ env.VCPKG_ROOT }}\installed
-            ${{ env.VCPKG_ROOT }}\downloads
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-
-
-      - name: Install vcpkg if not exists
-        run: |
-          if (-Not (Test-Path "${env:VCPKG_ROOT}")) {
-            git clone https://github.com/microsoft/vcpkg "${env:VCPKG_ROOT}"
-            & "${env:VCPKG_ROOT}\bootstrap-vcpkg.bat"
-          }
-
-      - name: Install dependencies with vcpkg
-        run: |
-          & "${env:VCPKG_ROOT}\vcpkg.exe" install
-
-      - name: Configure with CMake
-        run: |
-          cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="${env:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
-
-      - name: Build project
-        run: cmake --build build --config Release
+          name: painel-exe
+          path: painel.exe
